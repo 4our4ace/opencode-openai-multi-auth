@@ -21,7 +21,9 @@ const accounts = [
 ];
 
 vi.mock('@opencode-ai/plugin', () => ({
-	tool: (definition: unknown) => definition,
+	tool: Object.assign((definition: unknown) => definition, {
+		schema: { coerce: { number: () => ({ int: () => ({ nonnegative: () => ({}) }) }) } },
+	}),
 }));
 
 vi.mock('../lib/request/fetch-helpers.js', async () => {
@@ -46,6 +48,9 @@ vi.mock('../lib/accounts/index.js', () => {
 		}
 		getActiveAccount() {
 			return accounts[0];
+		}
+		async setActiveAccount(index: number) {
+			return accounts[index] ?? null;
 		}
 		async getNextAvailableAccount() {
 			return accounts[fallbackAccountIndex];
@@ -140,6 +145,16 @@ describe('Runtime fetch parity', () => {
 			'Using first@example.com (1/2)',
 			'Using second@example.com (2/2)',
 		]);
+	});
+
+	it('switches the current session to a selected account', async () => {
+		const plugin = await loadPlugin();
+		const result = await plugin.tool['switch-account'].execute(
+			{ accountIndex: 1 },
+			{ sessionID: 'manual-switch-session' },
+		);
+
+		expect(result).toBe('Switched to second@example.com.');
 	});
 
 	it('preserves the native request body and headers while replacing account auth', async () => {

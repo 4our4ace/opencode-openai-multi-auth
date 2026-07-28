@@ -137,6 +137,16 @@ export class AccountManager {
     getAccountCount() {
         return this.accounts.length;
     }
+    async setActiveAccount(index) {
+        const account = this.accounts.find((candidate) => candidate.index === index);
+        if (!account)
+            return null;
+        this.activeIndex = index;
+        this.roundRobinCursor = index;
+        this.strategyInitialized = true;
+        await this.saveToDisk();
+        return account;
+    }
     async getNextAvailableAccount(model) {
         const useRoundRobinCursor = this.config.accountSelectionStrategy === "round-robin";
         return this.selectNextAvailableAccount(model, useRoundRobinCursor);

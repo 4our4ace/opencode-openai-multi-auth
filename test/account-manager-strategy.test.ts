@@ -140,6 +140,31 @@ describe("AccountManager strategy selection", () => {
     expect(third?.index).toBe(first?.index);
   });
 
+  it("sets and persists the manually selected account", async () => {
+    const home = mkdtempSync(join(tmpdir(), "strategy-manual-switch-"));
+    const manager = await createManager(home, "sticky");
+    await manager.loadFromDisk();
+    await manager.addAccount("a@example.com", "rt-1");
+    await manager.addAccount("b@example.com", "rt-2");
+
+    expect((await manager.setActiveAccount(1))?.email).toBe("b@example.com");
+    expect(manager.getActiveAccount()?.index).toBe(1);
+
+    const reloaded = await createManager(home, "sticky");
+    await reloaded.loadFromDisk();
+    expect(reloaded.getActiveAccount()?.index).toBe(1);
+  });
+
+  it("does not change the active account for an unknown manual selection", async () => {
+    const home = mkdtempSync(join(tmpdir(), "strategy-manual-switch-missing-"));
+    const manager = await createManager(home, "sticky");
+    await manager.loadFromDisk();
+    await manager.addAccount("a@example.com", "rt-1");
+
+    expect(await manager.setActiveAccount(9)).toBeNull();
+    expect(manager.getActiveAccount()?.index).toBe(0);
+  });
+
   it("rotates account selection for new session bindings in the same hybrid process", async () => {
     const home = mkdtempSync(join(tmpdir(), "strategy-hybrid-new-session-"));
     const manager = await createManager(home, "hybrid");

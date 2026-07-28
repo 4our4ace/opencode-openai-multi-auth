@@ -528,10 +528,17 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                 template: "Run the codex-status tool and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
                 description: "List all configured OpenAI accounts and their current usage status.",
             };
+            cfg.command["switch-account"] = {
+                template: "Run the switch-account tool with accountIndex $1 and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
+                description: "Switch this session and future sessions to an OpenAI account by index.",
+            };
             cfg.experimental = cfg.experimental || {};
             cfg.experimental.primary_tools = cfg.experimental.primary_tools || [];
             if (!cfg.experimental.primary_tools.includes("codex-status")) {
                 cfg.experimental.primary_tools.push("codex-status");
+            }
+            if (!cfg.experimental.primary_tools.includes("switch-account")) {
+                cfg.experimental.primary_tools.push("switch-account");
             }
         },
         tool: {
@@ -571,6 +578,28 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                         lines.push("");
                     }
                     return lines.join("\n");
+                },
+            }),
+            "switch-account": tool({
+                description: "Switch the current session and future sessions to an OpenAI account by index.",
+                args: {
+                    accountIndex: tool.schema.coerce.number().int().nonnegative(),
+                },
+                async execute({ accountIndex }, context) {
+                    const account = await accountManager.setActiveAccount(accountIndex);
+                    if (!account) {
+                        const available = accountManager
+                            .getAllAccounts()
+                            .map((candidate) => candidate.index)
+                            .join(", ");
+                        return available
+                            ? `Account ${accountIndex} does not exist. Available accounts: ${available}.`
+                            : "No OpenAI accounts are configured. Run opencode auth login first.";
+                    }
+                    sessionBindingStore.set(context.sessionID, account.index);
+                    const label = account.email || `account ${account.index}`;
+                    const plan = account.planType ? ` (${account.planType})` : "";
+                    return `Switched to ${label}${plan}.`;
                 },
             }),
         },

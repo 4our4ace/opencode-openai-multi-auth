@@ -12,6 +12,7 @@ export declare class AccountManager {
     addAccount(email: string | undefined, refreshToken: string, accessToken?: string, expires?: number): Promise<ManagedAccount>;
     getAllAccounts(): ManagedAccount[];
     getAccountCount(): number;
+    setActiveAccount(index: number): Promise<ManagedAccount | null>;
     getNextAvailableAccount(model?: string): Promise<ManagedAccount | null>;
     getNextAvailableAccountForNewSession(model?: string): Promise<ManagedAccount | null>;
     private selectNextAvailableAccount;

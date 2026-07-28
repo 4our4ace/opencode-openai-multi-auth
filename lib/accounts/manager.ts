@@ -193,6 +193,17 @@ export class AccountManager {
     return this.accounts.length;
   }
 
+  async setActiveAccount(index: number): Promise<ManagedAccount | null> {
+    const account = this.accounts.find((candidate) => candidate.index === index);
+    if (!account) return null;
+
+    this.activeIndex = index;
+    this.roundRobinCursor = index;
+    this.strategyInitialized = true;
+    await this.saveToDisk();
+    return account;
+  }
+
   async getNextAvailableAccount(
     model?: string,
   ): Promise<ManagedAccount | null> {

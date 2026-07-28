@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@opencode-ai/plugin", () => ({
-  tool: (definition: unknown) => definition,
+  tool: Object.assign((definition: unknown) => definition, {
+    schema: { coerce: { number: () => ({ int: () => ({ nonnegative: () => ({}) }) }) } },
+  }),
 }));
 
 vi.mock("../lib/accounts/index.js", () => ({
