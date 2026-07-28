@@ -5,8 +5,8 @@ usage() {
 	cat <<'EOF'
 Usage: ./install.sh [--help]
 
-Clones or fast-forwards the OpenCode multi-auth and compact plugins, builds
-them, and adds their local paths to the global OpenCode configuration.
+Clones or fast-forwards the OpenCode multi-auth plugin and adds it to the
+global OpenCode and TUI configurations.
 EOF
 }
 
@@ -22,11 +22,9 @@ fi
 readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 readonly PLUGIN_DIR="$CONFIG_HOME/opencode/plugins"
 readonly MULTI_DIR="$PLUGIN_DIR/opencode-openai-multi-auth"
-readonly COMPACT_DIR="$PLUGIN_DIR/opencode-openai-compact"
 readonly CONFIG_FILE="$CONFIG_HOME/opencode/opencode.json"
 readonly TUI_CONFIG_FILE="$CONFIG_HOME/opencode/tui.json"
 readonly MULTI_REPO="https://github.com/4our4ace/opencode-openai-multi-auth.git"
-readonly COMPACT_REPO="https://github.com/4our4ace/opencode-openai-compact.git"
 
 command -v git >/dev/null || { printf 'Error: git is required.\n' >&2; exit 1; }
 command -v npm >/dev/null || { printf 'Error: npm is required.\n' >&2; exit 1; }
@@ -57,23 +55,11 @@ clone_or_update() {
 
 mkdir -p "$PLUGIN_DIR"
 clone_or_update "$MULTI_REPO" "$MULTI_DIR"
-clone_or_update "$COMPACT_REPO" "$COMPACT_DIR"
 
 (cd "$MULTI_DIR" && npm ci --omit=dev)
 
-if command -v corepack >/dev/null 2>&1; then
-	corepack pnpm --version >/dev/null
-	(cd "$COMPACT_DIR" && corepack pnpm install --prod --frozen-lockfile)
-elif command -v pnpm >/dev/null 2>&1; then
-	printf 'Warning: corepack is unavailable; using pnpm from PATH.\n' >&2
-	(cd "$COMPACT_DIR" && pnpm install --prod --frozen-lockfile)
-else
-	printf 'Error: corepack/pnpm is required to build opencode-openai-compact.\n' >&2
-	exit 1
-fi
-
 mkdir -p "$(dirname "$CONFIG_FILE")"
-OPENCODE_CONFIG_FILE="$CONFIG_FILE" OPENCODE_MULTI_DIR="$MULTI_DIR" OPENCODE_COMPACT_DIR="$COMPACT_DIR" python3 - <<'PY'
+OPENCODE_CONFIG_FILE="$CONFIG_FILE" OPENCODE_MULTI_DIR="$MULTI_DIR" python3 - <<'PY'
 import json
 import os
 import shutil
@@ -82,8 +68,6 @@ from datetime import datetime, timezone
 
 config_file = os.environ["OPENCODE_CONFIG_FILE"]
 multi = f'file://{os.environ["OPENCODE_MULTI_DIR"]}/dist/index.js'
-compact = f'file://{os.environ["OPENCODE_COMPACT_DIR"]}'
-managed = [multi, compact]
 
 if os.path.exists(config_file):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -100,7 +84,7 @@ if not isinstance(config, dict):
 plugins = config.get("plugin", [])
 if not isinstance(plugins, list):
     raise SystemExit(f"Error: {config_file} has a non-array plugin field")
-config["plugin"] = [entry for entry in plugins if entry not in managed] + managed
+config["plugin"] = [entry for entry in plugins if entry != multi] + [multi]
 
 directory = os.path.dirname(config_file)
 fd, temporary = tempfile.mkstemp(prefix=".opencode.json.", dir=directory)

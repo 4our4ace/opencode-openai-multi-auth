@@ -5,7 +5,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 	cat <<'EOF'
 Usage: ./uninstall.sh [--help]
 
-Removes only this suite's local plugin entries and managed plugin folders.
+Removes only this plugin's local entries and managed plugin folder.
 The OpenCode configuration is backed up before it is changed.
 EOF
 	exit 0
@@ -18,13 +18,12 @@ fi
 readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 readonly PLUGIN_DIR="$CONFIG_HOME/opencode/plugins"
 readonly MULTI_DIR="$PLUGIN_DIR/opencode-openai-multi-auth"
-readonly COMPACT_DIR="$PLUGIN_DIR/opencode-openai-compact"
 readonly CONFIG_FILE="$CONFIG_HOME/opencode/opencode.json"
 readonly TUI_CONFIG_FILE="$CONFIG_HOME/opencode/tui.json"
 
 command -v python3 >/dev/null || { printf 'Error: python3 is required.\n' >&2; exit 1; }
 
-OPENCODE_CONFIG_FILE="$CONFIG_FILE" OPENCODE_MULTI_DIR="$MULTI_DIR" OPENCODE_COMPACT_DIR="$COMPACT_DIR" python3 - <<'PY'
+OPENCODE_CONFIG_FILE="$CONFIG_FILE" OPENCODE_MULTI_DIR="$MULTI_DIR" python3 - <<'PY'
 import json
 import os
 import shutil
@@ -33,7 +32,6 @@ from datetime import datetime, timezone
 
 config_file = os.environ["OPENCODE_CONFIG_FILE"]
 multi = f'file://{os.environ["OPENCODE_MULTI_DIR"]}/dist/index.js'
-compact = f'file://{os.environ["OPENCODE_COMPACT_DIR"]}'
 
 if os.path.exists(config_file):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -46,7 +44,7 @@ if os.path.exists(config_file):
     plugins = config.get("plugin", [])
     if not isinstance(plugins, list):
         raise SystemExit(f"Error: {config_file} has a non-array plugin field")
-    config["plugin"] = [entry for entry in plugins if entry != multi and entry != compact]
+    config["plugin"] = [entry for entry in plugins if entry != multi]
     directory = os.path.dirname(config_file)
     fd, temporary = tempfile.mkstemp(prefix=".opencode.json.", dir=directory)
     try:
@@ -101,5 +99,5 @@ finally:
 print(f"Updated {config_file} (backup: {backup})")
 PY
 
-rm -rf -- "$MULTI_DIR" "$COMPACT_DIR"
-printf 'Removed managed plugin folders. Restart OpenCode to apply the change.\n'
+rm -rf -- "$MULTI_DIR"
+printf 'Removed multi-auth. Restart OpenCode to apply the change.\n'

@@ -32,7 +32,7 @@
 ## Quick Start
 
 ```bash
-# Install multi-auth and native compaction
+# Install multi-auth
 curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-multi-auth/main/install.sh | bash
 ```
 
@@ -50,29 +50,11 @@ opencode auth login
 # Restart OpenCode, then use your normal openai/<model> models.
 ```
 
-To remove both managed plugins:
+To remove multi-auth:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-multi-auth/main/uninstall.sh | bash
 ```
-
-### With OpenAI Native Compaction
-
-The installer configures multi-auth before compact. If you manage the plugins
-yourself, keep that order:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    "file:///home/YOU/.config/opencode/plugins/opencode-openai-multi-auth/dist/index.js",
-    "file:///home/YOU/.config/opencode/plugins/opencode-openai-compact"
-  ]
-}
-```
-
-Both plugins also work independently. Restart OpenCode after changing plugin
-configuration.
 
 ---
 
