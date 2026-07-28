@@ -139,7 +139,18 @@ export function getNormalizedModel(modelId: string): string | undefined {
 			(key) => key.toLowerCase() === lowerModelId,
 		);
 
-		return match ? MODEL_MAP[match] : undefined;
+		if (match) {
+			return MODEL_MAP[match];
+		}
+
+		// OpenCode may expose new GPT models before this plugin has released a
+		// matching static preset. Treat a trailing reasoning preset as a variant,
+		// while preserving the actual model family (for example,
+		// gpt-5.6-terra-high -> gpt-5.6-terra).
+		const reasoningVariant = lowerModelId.match(
+			/^(gpt-[a-z0-9.-]+)-(none|minimal|low|medium|high|xhigh)$/,
+		);
+		return reasoningVariant?.[1];
 	} catch {
 		return undefined;
 	}

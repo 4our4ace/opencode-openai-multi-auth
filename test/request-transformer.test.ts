@@ -51,6 +51,17 @@ describe("Request Transformer Module", () => {
       expect(normalizeModel("gpt-4o")).toBe("gpt-4o");
     });
 
+    it("should preserve new GPT model families while stripping reasoning presets", async () => {
+      expect(normalizeModel("gpt-5.6-terra")).toBe("gpt-5.6-terra");
+      expect(normalizeModel("gpt-5.6-terra-high")).toBe("gpt-5.6-terra");
+      expect(normalizeModel("openai/gpt-5.6-codex-xhigh")).toBe(
+        "gpt-5.6-codex",
+      );
+      expect(normalizeModel("gpt-5.7-future-medium")).toBe(
+        "gpt-5.7-future",
+      );
+    });
+
     it("should return gpt-5.1 for undefined", async () => {
       expect(normalizeModel(undefined)).toBe("gpt-5.1");
     });

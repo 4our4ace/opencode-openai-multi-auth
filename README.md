@@ -32,9 +32,28 @@
 ## Quick Start
 
 ```bash
-# Install
-npx -y opencode-openai-multi-auth@latest
+# Clone and build the local plugin
+mkdir -p ~/.config/opencode/plugins
+git clone https://github.com/4our4ace/opencode-openai-multi-auth.git \
+  ~/.config/opencode/plugins/opencode-openai-multi-auth
+cd ~/.config/opencode/plugins/opencode-openai-multi-auth
+npm install && npm run build
+```
 
+Add the built plugin to `~/.config/opencode/opencode.json`:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "file:///home/YOU/.config/opencode/plugins/opencode-openai-multi-auth/dist/index.js"
+  ]
+}
+```
+
+Then authenticate and start OpenCode:
+
+```bash
 # Add your first account
 opencode auth login
 # Select "ChatGPT Plus/Pro (Codex Subscription)"
@@ -43,9 +62,28 @@ opencode auth login
 opencode auth login
 # Select "Add Another OpenAI Account"
 
-# Start coding - accounts rotate automatically on rate limits
-opencode run "write hello world to test.txt" --model=openai/gpt-5.2 --variant=medium
+# Restart OpenCode, then use your normal openai/<model> models.
 ```
+
+### With OpenAI Native Compaction
+
+To install both local plugins, clone and build
+[`opencode-openai-compact`](https://github.com/4our4ace/opencode-openai-compact)
+as well. Put **multi-auth first** so it owns account selection and compact
+remains auth-free middleware:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "file:///home/YOU/.config/opencode/plugins/opencode-openai-multi-auth/dist/index.js",
+    "file:///home/YOU/.config/opencode/plugins/opencode-openai-compact"
+  ]
+}
+```
+
+Both plugins also work independently. Restart OpenCode after changing plugin
+configuration.
 
 ---
 

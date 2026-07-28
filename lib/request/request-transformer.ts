@@ -265,8 +265,19 @@ export function getReasoningConfig(
     !isCodexMax &&
     !isCodexMini;
 
+  // Do not artificially restrict newer GPT families to the capabilities of
+  // older static presets. The ChatGPT backend remains the authority for new
+  // models; this keeps newly exposed GPT model IDs usable without a release.
+  const gptVersion = normalizedName.match(/^gpt-(\d+)(?:\.(\d+))?(?:-|$)/);
+  const gptMajor = Number(gptVersion?.[1]);
+  const gptMinor = Number(gptVersion?.[2] || 0);
+  const isNewerGptFamily =
+    Boolean(gptVersion) &&
+    (gptMajor > 5 || (gptMajor === 5 && gptMinor >= 3));
+
   // GPT 5.2, GPT 5.2 Codex, and Codex Max support xhigh reasoning
-  const supportsXhigh = isGpt52General || isGpt52Codex || isCodexMax;
+  const supportsXhigh =
+    isGpt52General || isGpt52Codex || isCodexMax || isNewerGptFamily;
 
   // GPT 5.1 general and GPT 5.2 general support "none" reasoning per:
   // - OpenAI API docs: "gpt-5.1 defaults to none, supports: none, low, medium, high"
@@ -274,17 +285,18 @@ export function getReasoningConfig(
   // - Codex CLI: docs/config.md lists "none" as valid for model_reasoning_effort
   // - gpt-5.2 (being newer) also supports: none, low, medium, high, xhigh
   // - Codex models (including GPT-5.2 Codex) do NOT support "none"
-  const supportsNone = isGpt52General || isGpt51General;
+  const supportsNone =
+    isGpt52General || isGpt51General || (isNewerGptFamily && !isCodex);
 
   // Default based on model type (Codex CLI defaults)
   // Note: OpenAI docs say gpt-5.1 defaults to "none", but we default to "medium"
   // for better coding assistance unless user explicitly requests "none"
   const defaultEffort: ReasoningConfig["effort"] = isCodexMini
     ? "medium"
-    : supportsXhigh
-      ? "high"
-      : isLightweight
-        ? "minimal"
+    : isLightweight
+      ? "minimal"
+      : supportsXhigh
+        ? "high"
         : "medium";
 
   // Get user-requested effort

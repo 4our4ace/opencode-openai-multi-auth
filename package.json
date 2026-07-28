@@ -1,5 +1,5 @@
 {
-  "name": "opencode-openai-multi-auth",
+  "name": "@4our4ace/opencode-openai-multi-auth",
   "version": "5.0.6",
   "description": "OpenAI ChatGPT OAuth plugin for opencode with multi-account rotation on rate limits",
   "main": "./dist/index.js",
@@ -9,7 +9,7 @@
   "author": "@zenysTx",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dkraemerwork/opencode-openai-multi-auth.git"
+    "url": "git+https://github.com/4our4ace/opencode-openai-multi-auth.git"
   },
   "keywords": [
     "opencode",
@@ -24,9 +24,9 @@
     "rate-limit",
     "rotation"
   ],
-  "homepage": "https://github.com/dkraemerwork/opencode-openai-multi-auth#readme",
+  "homepage": "https://github.com/4our4ace/opencode-openai-multi-auth#readme",
   "bugs": {
-    "url": "https://github.com/dkraemerwork/opencode-openai-multi-auth/issues"
+    "url": "https://github.com/4our4ace/opencode-openai-multi-auth/issues"
   },
   "scripts": {
     "build": "tsc && cp lib/oauth-success.html dist/lib/",

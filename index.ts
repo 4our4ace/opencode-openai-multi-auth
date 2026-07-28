@@ -13,28 +13,68 @@ import { openBrowserUrl } from "./lib/auth/browser.js";
 import { startLocalOAuthServer } from "./lib/auth/server.js";
 import {
   AUTH_LABELS,
-  CODEX_BASE_URL,
   DUMMY_API_KEY,
   ERROR_MESSAGES,
   LOG_STAGES,
   PROVIDER_ID,
   HTTP_STATUS,
-  MODEL_FALLBACKS,
 } from "./lib/constants.js";
 import { logRequest, logDebug } from "./lib/logger.js";
 import {
-  createCodexHeaders,
   extractRequestUrl,
   handleErrorResponse,
   handleSuccessResponse,
-  rewriteUrlForCodex,
-  validateCodexBackendUrl,
 } from "./lib/request/fetch-helpers.js";
 import { AccountManager } from "./lib/accounts/index.js";
 import type { ManagedAccount } from "./lib/accounts/index.js";
 import { codexStatus } from "./lib/codex-status.js";
-import { prefetchModels } from "./lib/models.js";
 import { SessionBindingStore } from "./lib/session-bindings.js";
+
+const FETCH_MIDDLEWARE = Symbol.for(
+  "@4our4ace/opencode-openai-compact/fetch-middleware",
+);
+const ACTIVE_MARKER = Symbol.for(
+  "@4our4ace/opencode-openai-multi-auth/active",
+);
+const ACTIVE_INSTANCES = Symbol.for(
+  "@4our4ace/opencode-openai-multi-auth/active-instances",
+);
+const FETCH_MIDDLEWARE_VERSION = 1;
+type FetchMiddleware = {
+  version: number;
+  middleware?: (next: typeof fetch) => typeof fetch;
+  base?: typeof fetch;
+  attach?: (middleware: (next: typeof fetch) => typeof fetch) => void;
+};
+
+function requestInitFor(input: Request | string | URL, init?: RequestInit): RequestInit | undefined {
+  if (!(input instanceof Request)) return init;
+  const source = input.clone();
+  const requestInit: RequestInit & { duplex?: "half" } = {
+    method: input.method,
+    headers: new Headers(input.headers),
+    body: source.body ?? undefined,
+    cache: input.cache,
+    credentials: input.credentials,
+    integrity: input.integrity,
+    keepalive: input.keepalive,
+    mode: input.mode,
+    redirect: input.redirect,
+    referrer: input.referrer,
+    referrerPolicy: input.referrerPolicy,
+    signal: input.signal,
+    ...init,
+  };
+  const duplex = (input as Request & { duplex?: "half" }).duplex;
+  if (duplex && requestInit.body != null) requestInit.duplex = duplex;
+  return requestInit;
+}
+
+async function requestBodyText(input: Request | string | URL, init?: RequestInit) {
+  if (typeof init?.body === "string") return init.body;
+  if (input instanceof Request) return input.clone().text();
+  return undefined;
+}
 
 function extractModelFromBody(body: string | undefined): string | undefined {
   if (!body) return undefined;
@@ -60,16 +100,33 @@ function extractPromptCacheKeyFromBody(body: string | undefined): string | undef
   }
 }
 
-let lastToastAccountIndex: number | null = null;
-let lastToastTime = 0;
-const TOAST_DEBOUNCE_MS = 5000;
-
-/** Track which models we've already shown fallback notifications for */
-const notifiedFallbacks = new Set<string>();
-
 export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
+  const globals = globalThis as Record<PropertyKey, unknown>;
+  const instance = Symbol("@4our4ace/opencode-openai-multi-auth/instance");
+  const instances =
+    globals[ACTIVE_INSTANCES] instanceof Set
+      ? (globals[ACTIVE_INSTANCES] as Set<symbol>)
+      : new Set<symbol>();
+  instances.add(instance);
+  globals[ACTIVE_INSTANCES] = instances;
+  globals[ACTIVE_MARKER] = true;
+
   const quietMode = process.env.OPENCODE_OPENAI_QUIET === "1";
   const debugMode = process.env.OPENCODE_OPENAI_DEBUG === "1";
+  const toastAccountBySession = new Map<string, number>();
+  let baseFetch: typeof fetch = fetch;
+  let compactMiddleware: ((next: typeof fetch) => typeof fetch) | undefined;
+  let multiAuthFetch: typeof fetch = fetch;
+  const multiAuthConsumer: typeof fetch = (input, init) =>
+    multiAuthFetch(input, init);
+  Object.defineProperty(multiAuthConsumer, FETCH_MIDDLEWARE, {
+    value: {
+      version: FETCH_MIDDLEWARE_VERSION,
+      attach: (middleware) => {
+        compactMiddleware = middleware;
+      },
+    } satisfies FetchMiddleware,
+  });
 
   const showRateLimitToast = async (
     account: ManagedAccount,
@@ -111,22 +168,19 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
   };
 
   const showAccountToast = async (
+    sessionKey: string | undefined,
     account: ManagedAccount,
     totalAccounts: number,
   ) => {
     if (quietMode) return;
     if (totalAccounts <= 1) return;
 
-    const now = Date.now();
-    if (
-      lastToastAccountIndex === account.index &&
-      now - lastToastTime < TOAST_DEBOUNCE_MS
-    ) {
+    const toastKey = sessionKey ?? "__fallback__";
+    if (toastAccountBySession.get(toastKey) === account.index) {
       return;
     }
 
-    lastToastAccountIndex = account.index;
-    lastToastTime = now;
+    toastAccountBySession.set(toastKey, account.index);
 
     const accountLabel = account.email || `Account ${account.index + 1}`;
     const planLabel = account.planType ? ` [${account.planType}]` : "";
@@ -156,25 +210,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
         body: {
           message: `${model} not on ${failedLabel}, trying ${nextLabel}${nextPlan} (${triedCount}/${totalAccounts})`,
           variant: "info",
-        },
-      });
-    } catch {}
-  };
-
-  const showModelFallbackToast = async (
-    originalModel: string,
-    fallbackModel: string,
-  ) => {
-    if (quietMode) return;
-    // Only show once per model to avoid spam
-    const key = `${originalModel}->${fallbackModel}`;
-    if (notifiedFallbacks.has(key)) return;
-    notifiedFallbacks.add(key);
-    try {
-      await client.tui.showToast({
-        body: {
-          message: `${originalModel} not available yet. Using ${fallbackModel} instead.`,
-          variant: "warning",
         },
       });
     } catch {}
@@ -359,23 +394,44 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
           }
 
           const originalUrl = extractRequestUrl(input);
-          let url: string;
+          let parsedUrl: URL;
           try {
-            url = validateCodexBackendUrl(rewriteUrlForCodex(originalUrl));
+            parsedUrl = new URL(originalUrl);
           } catch {
-            return new Response(
-              JSON.stringify({ error: ERROR_MESSAGES.INVALID_BACKEND_URL }),
-              {
-                status: HTTP_STATUS.BAD_REQUEST,
-                headers: { "Content-Type": "application/json" },
-              },
-            );
+            return new Response(JSON.stringify({ error: ERROR_MESSAGES.INVALID_BACKEND_URL }), {
+              status: HTTP_STATUS.BAD_REQUEST,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
+          const isOpenAISource =
+            parsedUrl.protocol === "https:" &&
+            parsedUrl.hostname === "api.openai.com" &&
+            ["/v1/responses", "/v1/chat/completions", "/chat/completions"].includes(
+              parsedUrl.pathname,
+            );
+          const isChatGPTCodexResponse =
+            parsedUrl.protocol === "https:" &&
+            parsedUrl.hostname === "chatgpt.com" &&
+            ["/backend-api/codex/responses", "/backend-api/responses"].includes(
+              parsedUrl.pathname,
+            );
+          if (!isOpenAISource && !isChatGPTCodexResponse) {
+            return new Response(JSON.stringify({ error: ERROR_MESSAGES.INVALID_BACKEND_URL }), {
+              status: HTTP_STATUS.BAD_REQUEST,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
+          const url = isOpenAISource
+            ? "https://chatgpt.com/backend-api/codex/responses"
+            : originalUrl;
+          const requestInit = requestInitFor(input, init);
+
           let originalBody: Record<string, unknown> = {};
-          if (typeof init?.body === "string") {
+          if (typeof requestInit?.body === "string") {
             try {
-              originalBody = JSON.parse(init.body);
+              originalBody = JSON.parse(requestInit.body);
             } catch {
               originalBody = {};
             }
@@ -385,11 +441,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
             typeof originalBody.model === "string"
               ? originalBody.model
               : undefined;
-          const promptCacheKey =
-            typeof originalBody.prompt_cache_key === "string"
-              ? originalBody.prompt_cache_key
-              : undefined;
-
           const accountId =
             account.accountId || extractAccountIdFromToken(account.access || "");
 
@@ -406,26 +457,14 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
             );
           }
 
-          // Pre-fetch models to "register" client with backend
-          // This may help unlock access to newer models like gpt-5.3-codex
-          try {
-            await prefetchModels(account.access || "", accountId);
-          } catch {
-            // Ignore errors - this is a best-effort optimization
-          }
+          const headers = new Headers(requestInit?.headers ?? {});
+          headers.set("Authorization", `Bearer ${account.access || ""}`);
+          headers.set("ChatGPT-Account-Id", accountId);
 
-          const headers = createCodexHeaders(
-            init,
-            accountId,
-            account.access || "",
-            {
-              model,
-              promptCacheKey,
-            },
-          );
-
-          const response = await fetch(url, {
-            ...init,
+          const response = await (compactMiddleware
+            ? compactMiddleware(baseFetch)
+            : baseFetch)(url, {
+            ...requestInit,
             headers,
           });
 
@@ -492,7 +531,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
                 await accountManager.getNextAvailableAccountExcluding(triedAccountIndices, model);
               if (nextAccount && nextAccount.index !== account.index) {
                 await showAccountSwitchToast(account, nextAccount);
-                return executeRequest(nextAccount, input, init, retryCount + 1, triedAccountIndices);
+            return executeRequest(nextAccount, input, init, retryCount + 1, triedAccountIndices);
               }
             }
           }
@@ -561,31 +600,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
                   return executeRequest(nextAccount, input, init, retryCount, triedAccountIndices);
                 }
                 
-                // STEP 2: All accounts tried - fall back to older model
-                const fallbackModel = MODEL_FALLBACKS[requestedModel];
-                if (fallbackModel) {
-                  if (debugMode) {
-                    console.log(`[openai-multi-auth] All ${triedAccountIndices.size} accounts tried for ${requestedModel}, falling back to ${fallbackModel}`);
-                  }
-                  await showModelFallbackToast(requestedModel, fallbackModel);
-                  
-                  // Retry with fallback model using first available account (reset tried accounts for new model)
-                  const modifiedBody = JSON.parse(init?.body as string || "{}");
-                  modifiedBody.model = fallbackModel;
-                  const modifiedInit = {
-                    ...init,
-                    body: JSON.stringify(modifiedBody),
-                  };
-                  
-                  // Get first available account for the fallback model
-                  const fallbackAccount = await accountManager.getNextAvailableAccount(fallbackModel);
-                  if (fallbackAccount) {
-                    // Reset tried accounts for the new model
-                    return executeRequest(fallbackAccount, input, modifiedInit, 0, new Set());
-                  }
-                  // If no account available, use current account
-                  return executeRequest(account, input, modifiedInit, retryCount + 1, new Set());
-                }
               }
             } catch {
               // If parsing fails, continue with normal error handling
@@ -599,33 +613,28 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
           return await handleSuccessResponse(response, isStreaming);
         };
 
+        multiAuthFetch = async (
+          input: Request | string | URL,
+          init?: RequestInit,
+        ): Promise<Response> => {
+          const requestBody = await requestBodyText(input, init);
+          const model = extractModelFromBody(requestBody);
+          const sessionKey = extractPromptCacheKeyFromBody(requestBody);
+          const account = await getSessionBoundAccount(sessionKey, model);
+
+          if (!account) {
+            return new Response(
+              JSON.stringify({ error: "No available OpenAI accounts" }),
+              { status: 503, headers: { "Content-Type": "application/json" } },
+            );
+          }
+
+          await showAccountToast(sessionKey, account, accountManager.getAccountCount());
+          return executeRequest(account, input, init);
+        };
         return {
           apiKey: DUMMY_API_KEY,
-          baseURL: CODEX_BASE_URL,
-          async fetch(
-            input: Request | string | URL,
-            init?: RequestInit,
-          ): Promise<Response> {
-            const requestBody =
-              typeof init?.body === "string" ? (init.body as string) : undefined;
-            const model = extractModelFromBody(requestBody);
-            const sessionKey = extractPromptCacheKeyFromBody(requestBody);
-            const account = await getSessionBoundAccount(sessionKey, model);
-
-            if (!account) {
-              return new Response(
-                JSON.stringify({ error: "No available OpenAI accounts" }),
-                {
-                  status: 503,
-                  headers: { "Content-Type": "application/json" },
-                },
-              );
-            }
-
-            await showAccountToast(account, accountManager.getAccountCount());
-
-            return executeRequest(account, input, init);
-          },
+          fetch: multiAuthConsumer,
         };
       },
       methods: [
@@ -677,16 +686,24 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
         },
       ],
     },
-    "chat.headers": async (
-      input: { model: { providerID: string }; sessionID: string },
-      output: { headers: Record<string, string> },
-    ) => {
-      if (input.model.providerID !== PROVIDER_ID) return;
-      output.headers = output.headers || {};
-      output.headers.originator = "opencode";
-      output.headers.session_id = input.sessionID;
-    },
     config: async (cfg) => {
+      const configuredFetch = (cfg.provider as Record<string, any> | undefined)
+        ?.openai?.options?.fetch;
+      const protocol = typeof configuredFetch === "function"
+        ? (configuredFetch as unknown as Record<PropertyKey, unknown>)[
+            FETCH_MIDDLEWARE
+          ] as FetchMiddleware | undefined
+        : undefined;
+      if (protocol?.version === FETCH_MIDDLEWARE_VERSION && protocol.middleware) {
+        baseFetch = protocol.base ?? fetch;
+        compactMiddleware = protocol.middleware;
+      } else if (typeof configuredFetch === "function") {
+        baseFetch = configuredFetch;
+      }
+      const provider = ((cfg.provider ??= {}) as Record<string, any>).openai ??= {};
+      const options = (provider.options ??= {}) as Record<string, any>;
+      options.fetch = multiAuthConsumer;
+
       cfg.command = cfg.command || {};
       cfg.command["codex-status"] = {
         template:
@@ -746,7 +763,21 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
         },
       }),
     },
-  };
+    dispose: async () => {
+      const currentInstances = globals[ACTIVE_INSTANCES];
+      if (!(currentInstances instanceof Set)) return;
+
+      currentInstances.delete(instance);
+      if (currentInstances.size === 0) {
+        if (globals[ACTIVE_MARKER] === true) {
+          delete globals[ACTIVE_MARKER];
+        }
+        if (globals[ACTIVE_INSTANCES] === currentInstances) {
+          delete globals[ACTIVE_INSTANCES];
+        }
+      }
+    },
+  } as Awaited<ReturnType<Plugin>>;
 };
 
 export default OpenAIAuthPlugin;
