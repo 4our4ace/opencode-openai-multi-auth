@@ -182,6 +182,7 @@ export const OpenAIAuthPlugin = async ({ client }) => {
         if (!sessionKey) {
             return accountManager.getNextAvailableAccount(model);
         }
+        sessionBindingStore.loadFromDisk();
         const boundIndex = sessionBindingStore.get(sessionKey);
         if (boundIndex !== undefined) {
             const bound = findAccountByIndex(boundIndex);

@@ -10,6 +10,7 @@ export class SessionBindingStore {
         this.filePath = filePath;
     }
     loadFromDisk() {
+        this.bindings.clear();
         if (!existsSync(this.filePath))
             return;
         ensureSecureFile(this.filePath);

@@ -21,6 +21,7 @@ export class SessionBindingStore {
 	constructor(private readonly filePath = DEFAULT_SESSION_BINDINGS_FILE) {}
 
 	loadFromDisk(): void {
+		this.bindings.clear();
 		if (!existsSync(this.filePath)) return;
 		ensureSecureFile(this.filePath);
 

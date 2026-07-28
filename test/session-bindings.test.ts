@@ -37,6 +37,19 @@ describe("SessionBindingStore", () => {
 		expect(nextStore.get("ses_abc")).toBe(1);
 	});
 
+	it("refreshes a running store after another instance switches an account", () => {
+		const { filePath, store } = createStore();
+		store.loadFromDisk();
+		store.set("ses_abc", 0);
+
+		const pickerStore = new SessionBindingStore(filePath);
+		pickerStore.loadFromDisk();
+		pickerStore.set("ses_abc", 1);
+
+		store.loadFromDisk();
+		expect(store.get("ses_abc")).toBe(1);
+	});
+
 	it("persists deletes across store instances", () => {
 		const { filePath, store } = createStore();
 		store.loadFromDisk();
