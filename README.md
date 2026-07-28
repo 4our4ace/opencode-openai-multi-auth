@@ -171,11 +171,11 @@ cat ~/.config/opencode/openai-accounts.json | jq '.accounts[] | {email, rateLimi
 ### Slash Commands (TUI)
 ```text
 /codex-status
-/switch-account 1
+/switch-account
 ```
 `/codex-status` shows usage status for all configured accounts.
 
-`/switch-account <index>` immediately switches the current session and makes that account the preferred account for future sessions. Use the index shown by `/codex-status`.
+`/switch-account` opens an account picker showing each account email and plan. The selection immediately switches the current session and becomes the preferred account for future sessions.
 
 ---
 

@@ -22,6 +22,7 @@
   },
   "include": [
     "index.ts",
+    "tui.ts",
     "lib/**/*.ts"
   ],
   "exclude": [

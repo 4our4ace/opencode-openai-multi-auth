@@ -710,19 +710,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
           "Run the codex-status tool and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
         description: "List all configured OpenAI accounts and their current usage status.",
       };
-      cfg.command["switch-account"] = {
-        template:
-          "Run the switch-account tool with accountIndex $1 and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
-        description: "Switch this session and future sessions to an OpenAI account by index.",
-      };
-
       cfg.experimental = cfg.experimental || {};
       cfg.experimental.primary_tools = cfg.experimental.primary_tools || [];
       if (!cfg.experimental.primary_tools.includes("codex-status")) {
         cfg.experimental.primary_tools.push("codex-status");
-      }
-      if (!cfg.experimental.primary_tools.includes("switch-account")) {
-        cfg.experimental.primary_tools.push("switch-account");
       }
     },
     tool: {
