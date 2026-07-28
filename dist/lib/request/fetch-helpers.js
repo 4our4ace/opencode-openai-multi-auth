@@ -1,0 +1,262 @@
+/**
+ * Helper functions for the custom fetch implementation
+ * These functions break down the complex fetch logic into manageable, testable units
+ */
+import { release as osRelease } from "node:os";
+import { refreshAccessToken } from "../auth/auth.js";
+import { logRequest } from "../logger.js";
+import { getModelFamily } from "../prompts/codex.js";
+import { transformRequestBody, normalizeModel } from "./request-transformer.js";
+import { ensureContentType } from "./response-handler.js";
+import { PLUGIN_NAME, PLUGIN_VERSION, HTTP_STATUS, OPENAI_HEADERS, OPENAI_HEADER_VALUES, CODEX_ORIGINATOR, URL_PATHS, ERROR_MESSAGES, LOG_STAGES, } from "../constants.js";
+/**
+ * Determines if the current auth token needs to be refreshed
+ * @param auth - Current authentication state
+ * @returns True if token is expired or invalid
+ */
+export function shouldRefreshToken(auth) {
+    return auth.type !== "oauth" || !auth.access || auth.expires < Date.now();
+}
+/**
+ * Refreshes the OAuth token and updates stored credentials
+ * @param currentAuth - Current auth state
+ * @param client - Opencode client for updating stored credentials
+ * @returns Updated auth (throws on failure)
+ */
+export async function refreshAndUpdateToken(currentAuth, client) {
+    const refreshToken = currentAuth.type === "oauth" ? currentAuth.refresh : "";
+    const refreshResult = await refreshAccessToken(refreshToken);
+    if (refreshResult.type === "failed") {
+        throw new Error(ERROR_MESSAGES.TOKEN_REFRESH_FAILED);
+    }
+    // Update stored credentials
+    await client.auth.set({
+        path: { id: "openai" },
+        body: {
+            type: "oauth",
+            access: refreshResult.access,
+            refresh: refreshResult.refresh,
+            expires: refreshResult.expires,
+        },
+    });
+    // Update current auth reference if it's OAuth type
+    if (currentAuth.type === "oauth") {
+        currentAuth.access = refreshResult.access;
+        currentAuth.refresh = refreshResult.refresh;
+        currentAuth.expires = refreshResult.expires;
+    }
+    return currentAuth;
+}
+/**
+ * Extracts URL string from various request input types
+ * @param input - Request input (string, URL, or Request object)
+ * @returns URL string
+ */
+export function extractRequestUrl(input) {
+    if (typeof input === "string")
+        return input;
+    if (input instanceof URL)
+        return input.toString();
+    return input.url;
+}
+/**
+ * Rewrites OpenAI API URLs to Codex backend URLs
+ * @param url - Original URL
+ * @returns Rewritten URL for Codex backend
+ */
+export function rewriteUrlForCodex(url) {
+    // Must use /codex/responses endpoint to access Codex models
+    return url.replace(URL_PATHS.RESPONSES, URL_PATHS.CODEX_RESPONSES);
+}
+/**
+ * Validate that outbound requests target only the trusted Codex backend endpoint.
+ * @param url - Rewritten URL
+ * @returns Same URL when trusted
+ * @throws Error when URL is not the exact trusted endpoint
+ */
+export function validateCodexBackendUrl(url) {
+    let parsed;
+    try {
+        parsed = new URL(url);
+    }
+    catch {
+        throw new Error(ERROR_MESSAGES.INVALID_BACKEND_URL);
+    }
+    const isTrustedEndpoint = parsed.protocol === "https:" &&
+        parsed.hostname === "chatgpt.com" &&
+        parsed.pathname === "/backend-api/codex/responses";
+    if (!isTrustedEndpoint) {
+        throw new Error(ERROR_MESSAGES.INVALID_BACKEND_URL);
+    }
+    return parsed.toString();
+}
+/**
+ * Transforms request body and logs the transformation
+ * Fetches model-specific Codex instructions based on the request model
+ *
+ * @param init - Request init options
+ * @param url - Request URL
+ * @param userConfig - User configuration
+ * @param codexMode - Enable CODEX_MODE (bridge prompt instead of tool remap)
+ * @returns Transformed body and updated init, or undefined if no body
+ */
+export async function transformRequestForCodex(init, url, userConfig, codexMode = true) {
+    if (!init?.body)
+        return undefined;
+    try {
+        const body = JSON.parse(init.body);
+        const originalModel = body.model;
+        // Normalize model for logging
+        const normalizedModel = normalizeModel(originalModel);
+        const modelFamily = getModelFamily(normalizedModel);
+        // Log original request
+        logRequest(LOG_STAGES.BEFORE_TRANSFORM, {
+            url,
+            originalModel,
+            model: body.model,
+            hasTools: !!body.tools,
+            hasInput: !!body.input,
+            inputLength: body.input?.length,
+            codexMode,
+            body: body,
+        });
+        // Transform request body (no longer uses Codex CLI instructions)
+        const transformedBody = await transformRequestBody(body, userConfig, codexMode);
+        // Log transformed request
+        logRequest(LOG_STAGES.AFTER_TRANSFORM, {
+            url,
+            originalModel,
+            normalizedModel: transformedBody.model,
+            modelFamily,
+            hasTools: !!transformedBody.tools,
+            hasInput: !!transformedBody.input,
+            inputLength: transformedBody.input?.length,
+            reasoning: transformedBody.reasoning,
+            textVerbosity: transformedBody.text?.verbosity,
+            include: transformedBody.include,
+            body: transformedBody,
+        });
+        return {
+            body: transformedBody,
+            updatedInit: { ...init, body: JSON.stringify(transformedBody) },
+        };
+    }
+    catch (e) {
+        console.error(`[${PLUGIN_NAME}] ${ERROR_MESSAGES.REQUEST_PARSE_ERROR}:`, e);
+        return undefined;
+    }
+}
+/**
+ * Generates a Codex CLI-compatible User-Agent string
+ * Format: {originator}/{version} ({os_type} {os_version}; {arch}) {terminal}
+ * @returns User-Agent string
+ */
+function getCodexUserAgent() {
+    const platform = process.platform;
+    const arch = process.arch;
+    const osType = platform === "darwin"
+        ? "Mac OS"
+        : platform === "win32"
+            ? "Windows"
+            : "Linux";
+    // Convert Darwin kernel version to macOS version (24.x = macOS 15.x, 23.x = macOS 14.x, etc.)
+    const kernelVersion = osRelease();
+    const majorKernel = parseInt(kernelVersion.split(".")[0], 10);
+    const macOSMajor = majorKernel - 9; // Darwin 24 = macOS 15, Darwin 23 = macOS 14, etc.
+    const osVersion = platform === "darwin" ? `${macOSMajor}.0.0` : kernelVersion;
+    // Match exact Codex CLI format - use terminal name, not "opencode-plugin"
+    return `${CODEX_ORIGINATOR}/${PLUGIN_VERSION} (${osType} ${osVersion}; ${arch}) Terminal`;
+}
+/**
+ * Creates headers for Codex API requests
+ * @param init - Request init options
+ * @param accountId - ChatGPT account ID
+ * @param accessToken - OAuth access token
+ * @returns Headers object with all required Codex headers
+ */
+export function createCodexHeaders(init, accountId, accessToken, opts) {
+    const headers = new Headers(init?.headers ?? {});
+    headers.delete("x-api-key"); // Remove any existing API key
+    headers.set("Authorization", `Bearer ${accessToken}`);
+    headers.set(OPENAI_HEADERS.ACCOUNT_ID, accountId);
+    headers.set(OPENAI_HEADERS.BETA, OPENAI_HEADER_VALUES.BETA_RESPONSES);
+    // Don't set originator header - we want standard OpenAI responses, not Codex CLI format
+    const cacheKey = opts?.promptCacheKey;
+    if (cacheKey) {
+        headers.set(OPENAI_HEADERS.CONVERSATION_ID, cacheKey);
+        headers.set(OPENAI_HEADERS.SESSION_ID, cacheKey);
+    }
+    else {
+        headers.delete(OPENAI_HEADERS.CONVERSATION_ID);
+    }
+    headers.set("accept", "text/event-stream");
+    return headers;
+}
+/**
+ * Handles error responses from the Codex API
+ * @param response - Error response from API
+ * @returns Original response or mapped retryable response
+ */
+export async function handleErrorResponse(response) {
+    try {
+        const cloned = response.clone();
+        const errorBody = await cloned.text();
+        console.error(`[${PLUGIN_NAME}] Error ${response.status}: ${errorBody}`);
+    }
+    catch { }
+    const mapped = await mapUsageLimit404(response);
+    const finalResponse = mapped ?? response;
+    logRequest(LOG_STAGES.ERROR_RESPONSE, {
+        status: finalResponse.status,
+        statusText: finalResponse.statusText,
+    });
+    return finalResponse;
+}
+/**
+ * Handles successful responses from the Codex API
+ * Passes through Codex backend response for parity with upstream plugin.
+ * @param response - Success response from API
+ * @param _isStreaming - Preserved for compatibility with current call sites
+ * @returns Response passthrough with normalized content-type header
+ */
+export async function handleSuccessResponse(response, _isStreaming) {
+    const responseHeaders = ensureContentType(response.headers);
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+    });
+}
+async function mapUsageLimit404(response) {
+    if (response.status !== HTTP_STATUS.NOT_FOUND)
+        return null;
+    const clone = response.clone();
+    let text = "";
+    try {
+        text = await clone.text();
+    }
+    catch {
+        text = "";
+    }
+    if (!text)
+        return null;
+    let code = "";
+    try {
+        const parsed = JSON.parse(text);
+        code = (parsed?.error?.code ?? parsed?.error?.type ?? "").toString();
+    }
+    catch {
+        code = "";
+    }
+    const haystack = `${code} ${text}`.toLowerCase();
+    if (!/usage_limit_reached|usage_not_included|rate_limit_exceeded|usage limit/i.test(haystack)) {
+        return null;
+    }
+    const headers = new Headers(response.headers);
+    return new Response(response.body, {
+        status: HTTP_STATUS.TOO_MANY_REQUESTS,
+        statusText: "Too Many Requests",
+        headers,
+    });
+}
+//# sourceMappingURL=fetch-helpers.js.map

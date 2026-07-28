@@ -58,14 +58,14 @@ mkdir -p "$PLUGIN_DIR"
 clone_or_update "$MULTI_REPO" "$MULTI_DIR"
 clone_or_update "$COMPACT_REPO" "$COMPACT_DIR"
 
-(cd "$MULTI_DIR" && npm ci && npm run build)
+(cd "$MULTI_DIR" && npm ci --omit=dev)
 
 if command -v corepack >/dev/null 2>&1; then
 	corepack pnpm --version >/dev/null
-	(cd "$COMPACT_DIR" && corepack pnpm install --frozen-lockfile && corepack pnpm build)
+	(cd "$COMPACT_DIR" && corepack pnpm install --prod --frozen-lockfile)
 elif command -v pnpm >/dev/null 2>&1; then
 	printf 'Warning: corepack is unavailable; using pnpm from PATH.\n' >&2
-	(cd "$COMPACT_DIR" && pnpm install --frozen-lockfile && pnpm build)
+	(cd "$COMPACT_DIR" && pnpm install --prod --frozen-lockfile)
 else
 	printf 'Error: corepack/pnpm is required to build opencode-openai-compact.\n' >&2
 	exit 1

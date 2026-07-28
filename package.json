@@ -57,17 +57,20 @@
     "@opencode-ai/plugin": "^1.0.150",
     "@opencode-ai/sdk": "^1.0.150",
     "@types/node": "^24.6.2",
-    "@vitest/ui": "^3.2.4",
+    "@vitest/ui": "^3.2.6",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
-    "hono": "^4.10.4",
     "jsonc-parser": "^3.3.1"
   },
   "overrides": {
-    "hono": "^4.10.4",
-    "vite": "^7.1.12"
+    "flatted": "^3.4.3",
+    "hono": "^4.12.32",
+    "picomatch": "^4.0.5",
+    "postcss": "^8.5.24",
+    "rollup": "^4.62.3",
+    "vite": "^7.3.6"
   }
 }

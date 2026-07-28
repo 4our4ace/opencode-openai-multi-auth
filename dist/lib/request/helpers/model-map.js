@@ -1,0 +1,149 @@
+/**
+ * Model Configuration Map
+ *
+ * Maps model config IDs to their normalized API model names.
+ * Only includes exact config IDs that OpenCode will pass to the plugin.
+ */
+/**
+ * Map of config model IDs to normalized API model names
+ *
+ * Key: The model ID as specified in opencode.json config
+ * Value: The normalized model name to send to the API
+ */
+export const MODEL_MAP = {
+    // ============================================================================
+    // GPT-5.1 Codex Models
+    // ============================================================================
+    "gpt-5.1-codex": "gpt-5.1-codex",
+    "gpt-5.1-codex-low": "gpt-5.1-codex",
+    "gpt-5.1-codex-medium": "gpt-5.1-codex",
+    "gpt-5.1-codex-high": "gpt-5.1-codex",
+    // ============================================================================
+    // GPT-5.1 Codex Max Models
+    // ============================================================================
+    "gpt-5.1-codex-max": "gpt-5.1-codex-max",
+    "gpt-5.1-codex-max-low": "gpt-5.1-codex-max",
+    "gpt-5.1-codex-max-medium": "gpt-5.1-codex-max",
+    "gpt-5.1-codex-max-high": "gpt-5.1-codex-max",
+    "gpt-5.1-codex-max-xhigh": "gpt-5.1-codex-max",
+    // ============================================================================
+    // GPT-5.3 Models
+    // ============================================================================
+    "gpt-5.3": "gpt-5.3",
+    "gpt-5.3-none": "gpt-5.3",
+    "gpt-5.3-low": "gpt-5.3",
+    "gpt-5.3-medium": "gpt-5.3",
+    "gpt-5.3-high": "gpt-5.3",
+    "gpt-5.3-xhigh": "gpt-5.3",
+    // ============================================================================
+    // GPT-5.3 Codex Models
+    // ============================================================================
+    "gpt-5.3-codex": "gpt-5.3-codex",
+    "gpt-5.3-codex-low": "gpt-5.3-codex",
+    "gpt-5.3-codex-medium": "gpt-5.3-codex",
+    "gpt-5.3-codex-high": "gpt-5.3-codex",
+    "gpt-5.3-codex-xhigh": "gpt-5.3-codex",
+    "gpt-5.3-codex-max": "gpt-5.3-codex-max",
+    "gpt-5.3-codex-max-low": "gpt-5.3-codex-max",
+    "gpt-5.3-codex-max-medium": "gpt-5.3-codex-max",
+    "gpt-5.3-codex-max-high": "gpt-5.3-codex-max",
+    "gpt-5.3-codex-max-xhigh": "gpt-5.3-codex-max",
+    "gpt-5.3-codex-mini": "gpt-5.3-codex-mini",
+    "gpt-5.3-codex-mini-medium": "gpt-5.3-codex-mini",
+    "gpt-5.3-codex-mini-high": "gpt-5.3-codex-mini",
+    // ============================================================================
+    // GPT-5.2 Models (supports none/low/medium/high/xhigh per OpenAI API docs)
+    // ============================================================================
+    "gpt-5.2": "gpt-5.2",
+    "gpt-5.2-none": "gpt-5.2",
+    "gpt-5.2-low": "gpt-5.2",
+    "gpt-5.2-medium": "gpt-5.2",
+    "gpt-5.2-high": "gpt-5.2",
+    "gpt-5.2-xhigh": "gpt-5.2",
+    // ============================================================================
+    // GPT-5.2 Codex Models (low/medium/high/xhigh)
+    // ============================================================================
+    "gpt-5.2-codex": "gpt-5.2-codex",
+    "gpt-5.2-codex-low": "gpt-5.2-codex",
+    "gpt-5.2-codex-medium": "gpt-5.2-codex",
+    "gpt-5.2-codex-high": "gpt-5.2-codex",
+    "gpt-5.2-codex-xhigh": "gpt-5.2-codex",
+    // ============================================================================
+    // GPT-5.1 Codex Mini Models
+    // ============================================================================
+    "gpt-5.1-codex-mini": "gpt-5.1-codex-mini",
+    "gpt-5.1-codex-mini-medium": "gpt-5.1-codex-mini",
+    "gpt-5.1-codex-mini-high": "gpt-5.1-codex-mini",
+    // ============================================================================
+    // GPT-5.1 General Purpose Models (supports none/low/medium/high per OpenAI API docs)
+    // ============================================================================
+    "gpt-5.1": "gpt-5.1",
+    "gpt-5.1-none": "gpt-5.1",
+    "gpt-5.1-low": "gpt-5.1",
+    "gpt-5.1-medium": "gpt-5.1",
+    "gpt-5.1-high": "gpt-5.1",
+    "gpt-5.1-chat-latest": "gpt-5.1",
+    // ============================================================================
+    // GPT-5 Codex Models (LEGACY - preserved for pass-through compatibility)
+    // ============================================================================
+    "gpt-5-codex": "gpt-5-codex",
+    "gpt-5-codex-low": "gpt-5-codex",
+    "gpt-5-codex-medium": "gpt-5-codex",
+    "gpt-5-codex-high": "gpt-5-codex",
+    // ============================================================================
+    // GPT-5 Codex Mini Models (LEGACY - preserved for pass-through compatibility)
+    // ============================================================================
+    "codex-mini-latest": "gpt-5-codex-mini",
+    "gpt-5-codex-mini": "gpt-5-codex-mini",
+    "gpt-5-codex-mini-medium": "gpt-5-codex-mini",
+    "gpt-5-codex-mini-high": "gpt-5-codex-mini",
+    // ============================================================================
+    // GPT-5 General Purpose Models (LEGACY - preserved for pass-through compatibility)
+    // ============================================================================
+    "gpt-5": "gpt-5",
+    "gpt-5-minimal": "gpt-5",
+    "gpt-5-low": "gpt-5",
+    "gpt-5-medium": "gpt-5",
+    "gpt-5-high": "gpt-5",
+    "gpt-5-mini": "gpt-5-mini",
+    "gpt-5-nano": "gpt-5-nano",
+};
+/**
+ * Get normalized model name from config ID
+ *
+ * @param modelId - Model ID from config (e.g., "gpt-5.1-codex-low")
+ * @returns Normalized model name (e.g., "gpt-5.1-codex") or undefined if not found
+ */
+export function getNormalizedModel(modelId) {
+    try {
+        // Try direct lookup first
+        if (MODEL_MAP[modelId]) {
+            return MODEL_MAP[modelId];
+        }
+        // Try case-insensitive lookup
+        const lowerModelId = modelId.toLowerCase();
+        const match = Object.keys(MODEL_MAP).find((key) => key.toLowerCase() === lowerModelId);
+        if (match) {
+            return MODEL_MAP[match];
+        }
+        // OpenCode may expose new GPT models before this plugin has released a
+        // matching static preset. Treat a trailing reasoning preset as a variant,
+        // while preserving the actual model family (for example,
+        // gpt-5.6-terra-high -> gpt-5.6-terra).
+        const reasoningVariant = lowerModelId.match(/^(gpt-[a-z0-9.-]+)-(none|minimal|low|medium|high|xhigh)$/);
+        return reasoningVariant?.[1];
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * Check if a model ID is in the model map
+ *
+ * @param modelId - Model ID to check
+ * @returns True if model is in the map
+ */
+export function isKnownModel(modelId) {
+    return getNormalizedModel(modelId) !== undefined;
+}
+//# sourceMappingURL=model-map.js.map
