@@ -32,23 +32,8 @@
 ## Quick Start
 
 ```bash
-# Clone and build the local plugin
-mkdir -p ~/.config/opencode/plugins
-git clone https://github.com/4our4ace/opencode-openai-multi-auth.git \
-  ~/.config/opencode/plugins/opencode-openai-multi-auth
-cd ~/.config/opencode/plugins/opencode-openai-multi-auth
-npm install && npm run build
-```
-
-Add the built plugin to `~/.config/opencode/opencode.json`:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    "file:///home/YOU/.config/opencode/plugins/opencode-openai-multi-auth/dist/index.js"
-  ]
-}
+# Install multi-auth and native compaction
+curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-multi-auth/main/install.sh | bash
 ```
 
 Then authenticate and start OpenCode:
@@ -65,12 +50,16 @@ opencode auth login
 # Restart OpenCode, then use your normal openai/<model> models.
 ```
 
+To remove both managed plugins:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-multi-auth/main/uninstall.sh | bash
+```
+
 ### With OpenAI Native Compaction
 
-To install both local plugins, clone and build
-[`opencode-openai-compact`](https://github.com/4our4ace/opencode-openai-compact)
-as well. Put **multi-auth first** so it owns account selection and compact
-remains auth-free middleware:
+The installer configures multi-auth before compact. If you manage the plugins
+yourself, keep that order:
 
 ```jsonc
 {
