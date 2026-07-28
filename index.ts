@@ -370,6 +370,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
           account: ManagedAccount,
           input: Request | string | URL,
           init: RequestInit | undefined,
+          sessionKey: string | undefined,
           retryCount = 0,
           triedAccountIndices: Set<number> = new Set(),
         ): Promise<Response> => {
@@ -380,7 +381,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
             const nextAccount = await accountManager.getNextAvailableAccountExcluding(triedAccountIndices);
             if (nextAccount && nextAccount.index !== account.index) {
               await showAccountSwitchToast(account, nextAccount);
-              return executeRequest(nextAccount, input, init, retryCount, triedAccountIndices);
+              return executeRequest(nextAccount, input, init, sessionKey, retryCount, triedAccountIndices);
             }
             return new Response(
               JSON.stringify({
@@ -462,6 +463,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
           headers.set("Authorization", `Bearer ${account.access || ""}`);
           headers.set("ChatGPT-Account-Id", accountId);
 
+          if (sessionKey) sessionBindingStore.set(sessionKey, account.index);
+
           const response = await (compactMiddleware
             ? compactMiddleware(baseFetch)
             : baseFetch)(url, {
@@ -532,7 +535,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
                 await accountManager.getNextAvailableAccountExcluding(triedAccountIndices, model);
               if (nextAccount && nextAccount.index !== account.index) {
                 await showAccountSwitchToast(account, nextAccount);
-            return executeRequest(nextAccount, input, init, retryCount + 1, triedAccountIndices);
+                return executeRequest(nextAccount, input, init, sessionKey, retryCount + 1, triedAccountIndices);
               }
             }
           }
@@ -543,7 +546,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
               await accountManager.getNextAvailableAccountExcluding(triedAccountIndices, model);
             if (nextAccount && nextAccount.index !== account.index) {
               await showAccountSwitchToast(account, nextAccount);
-              return executeRequest(nextAccount, input, init, retryCount + 1, triedAccountIndices);
+              return executeRequest(nextAccount, input, init, sessionKey, retryCount + 1, triedAccountIndices);
             }
           }
 
@@ -598,7 +601,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
                     triedAccountIndices.size,
                     accountManager.getAccountCount(),
                   );
-                  return executeRequest(nextAccount, input, init, retryCount, triedAccountIndices);
+                  return executeRequest(nextAccount, input, init, sessionKey, retryCount, triedAccountIndices);
                 }
                 
               }
@@ -631,7 +634,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
           }
 
           await showAccountToast(sessionKey, account, accountManager.getAccountCount());
-          return executeRequest(account, input, init);
+          return executeRequest(account, input, init, sessionKey);
         };
         return {
           apiKey: DUMMY_API_KEY,

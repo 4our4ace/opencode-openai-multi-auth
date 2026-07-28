@@ -38,6 +38,7 @@ describe("account switch TUI", () => {
     await plugin.tui({
       keymap: { registerLayer: ({ commands }: any) => (command = commands[0]) },
       route: { current: { name: "session", params: { sessionID: "session-1" } } },
+      lifecycle: { onDispose: vi.fn() },
       ui: {
         toast,
         dialog: { replace: (render: any) => (picker = render()), clear },

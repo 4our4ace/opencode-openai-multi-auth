@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const transformRequestForCodexMock = vi.fn();
 const showToastMock = vi.fn();
 let fallbackAccountIndex = 0;
+const sessionBindings = new Map<string, number>();
 const accounts = [
 	{
 		index: 0,
@@ -74,16 +75,15 @@ vi.mock('../lib/accounts/index.js', () => {
 
 vi.mock('../lib/session-bindings.js', () => {
 	class SessionBindingStore {
-		private map = new Map<string, number>();
 		loadFromDisk() {}
 		get(key: string) {
-			return this.map.get(key);
+			return sessionBindings.get(key);
 		}
 		set(key: string, value: number) {
-			this.map.set(key, value);
+			sessionBindings.set(key, value);
 		}
 		delete(key: string) {
-			this.map.delete(key);
+			sessionBindings.delete(key);
 		}
 	}
 
@@ -95,6 +95,7 @@ describe('Runtime fetch parity', () => {
 		transformRequestForCodexMock.mockReset();
 		showToastMock.mockReset();
 		fallbackAccountIndex = 0;
+		sessionBindings.clear();
 		(globalThis as any).fetch = vi.fn(async () => {
 			return new Response('data: {"type":"response.done"}\n\n', {
 				status: 200,
@@ -187,7 +188,7 @@ describe('Runtime fetch parity', () => {
 		expect(request[1].headers.get('ChatGPT-Account-Id')).toBe('acct_first');
 	});
 
-	it('retries a rate-limited request with the next account unchanged', async () => {
+	it('binds the session to the account used by a rate-limit failover', async () => {
 		const responses = [
 			new Response(JSON.stringify({ error: 'rate limited' }), {
 				status: 429,
@@ -200,7 +201,7 @@ describe('Runtime fetch parity', () => {
 		];
 		(globalThis as any).fetch = vi.fn(async () => responses.shift());
 		const fetch = await loadFetch();
-		const body = JSON.stringify({ model: 'gpt-5.3-codex', input: [] });
+		const body = JSON.stringify({ model: 'gpt-5.3-codex', prompt_cache_key: 'ses_failover', input: [] });
 
 		await fetch('https://api.openai.com/chat/completions', {
 			method: 'POST',
@@ -213,6 +214,13 @@ describe('Runtime fetch parity', () => {
 		expect((globalThis as any).fetch.mock.calls[1][1].headers.get('Authorization')).toBe('Bearer second-access-token');
 		expect((globalThis as any).fetch.mock.calls[1][1].headers.get('ChatGPT-Account-Id')).toBe('acct_second');
 		expect((globalThis as any).fetch.mock.calls[1][1].body).toBe(body);
+		expect(sessionBindings.get('ses_failover')).toBe(1);
+
+		const { createOpenAIProviderAuthResolver } = await import('../tui.js');
+		await expect(createOpenAIProviderAuthResolver()({ providerID: 'openai', sessionID: 'ses_failover' })).resolves.toMatchObject({
+			access: 'second-access-token',
+			accountId: 'acct_second',
+		});
 	});
 
 	it('does not call transformRequestForCodex in runtime fetch path', async () => {
@@ -276,5 +284,6 @@ describe('Runtime fetch parity', () => {
 		expect(init.method).toBe('POST');
 		expect(init.headers.get('x-request')).toBe('kept');
 		expect(JSON.parse(await new Response(init.body).text())).toEqual({ model: 'gpt-5.3-codex', input: [] });
+		expect(sessionBindings.size).toBe(0);
 	});
 });

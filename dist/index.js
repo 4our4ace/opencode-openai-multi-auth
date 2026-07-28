@@ -250,7 +250,7 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                     const email = profile?.email;
                     await accountManager.addAccount(email, auth.refresh, auth.access, auth.expires);
                 }
-                const executeRequest = async (account, input, init, retryCount = 0, triedAccountIndices = new Set()) => {
+                const executeRequest = async (account, input, init, sessionKey, retryCount = 0, triedAccountIndices = new Set()) => {
                     // Track this account as tried
                     triedAccountIndices.add(account.index);
                     const isTokenValid = await accountManager.ensureValidToken(account);
@@ -258,7 +258,7 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                         const nextAccount = await accountManager.getNextAvailableAccountExcluding(triedAccountIndices);
                         if (nextAccount && nextAccount.index !== account.index) {
                             await showAccountSwitchToast(account, nextAccount);
-                            return executeRequest(nextAccount, input, init, retryCount, triedAccountIndices);
+                            return executeRequest(nextAccount, input, init, sessionKey, retryCount, triedAccountIndices);
                         }
                         return new Response(JSON.stringify({
                             error: "Token refresh failed for the current session account. Start a new session to switch accounts.",
@@ -318,6 +318,8 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                     const headers = new Headers(requestInit?.headers ?? {});
                     headers.set("Authorization", `Bearer ${account.access || ""}`);
                     headers.set("ChatGPT-Account-Id", accountId);
+                    if (sessionKey)
+                        sessionBindingStore.set(sessionKey, account.index);
                     const response = await (compactMiddleware
                         ? compactMiddleware(baseFetch)
                         : baseFetch)(url, {
@@ -383,7 +385,7 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                             const nextAccount = await accountManager.getNextAvailableAccountExcluding(triedAccountIndices, model);
                             if (nextAccount && nextAccount.index !== account.index) {
                                 await showAccountSwitchToast(account, nextAccount);
-                                return executeRequest(nextAccount, input, init, retryCount + 1, triedAccountIndices);
+                                return executeRequest(nextAccount, input, init, sessionKey, retryCount + 1, triedAccountIndices);
                             }
                         }
                     }
@@ -392,7 +394,7 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                         const nextAccount = await accountManager.getNextAvailableAccountExcluding(triedAccountIndices, model);
                         if (nextAccount && nextAccount.index !== account.index) {
                             await showAccountSwitchToast(account, nextAccount);
-                            return executeRequest(nextAccount, input, init, retryCount + 1, triedAccountIndices);
+                            return executeRequest(nextAccount, input, init, sessionKey, retryCount + 1, triedAccountIndices);
                         }
                     }
                     // Handle model not supported errors (400 Bad Request with specific message)
@@ -436,7 +438,7 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                                         console.log(`[openai-multi-auth] Model ${requestedModel} not supported on ${account.email || account.index} [${account.planType}], trying ${nextAccount.email || nextAccount.index} [${nextAccount.planType}]`);
                                     }
                                     await showModelRetryToast(requestedModel, account, nextAccount, triedAccountIndices.size, accountManager.getAccountCount());
-                                    return executeRequest(nextAccount, input, init, retryCount, triedAccountIndices);
+                                    return executeRequest(nextAccount, input, init, sessionKey, retryCount, triedAccountIndices);
                                 }
                             }
                         }
@@ -458,7 +460,7 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                         return new Response(JSON.stringify({ error: "No available OpenAI accounts" }), { status: 503, headers: { "Content-Type": "application/json" } });
                     }
                     await showAccountToast(sessionKey, account, accountManager.getAccountCount());
-                    return executeRequest(account, input, init);
+                    return executeRequest(account, input, init, sessionKey);
                 };
                 return {
                     apiKey: DUMMY_API_KEY,

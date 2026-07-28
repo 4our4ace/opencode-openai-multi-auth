@@ -1,11 +1,48 @@
 import type { TuiPlugin } from "@opencode-ai/plugin/tui";
 import { AccountManager } from "./lib/accounts/index.js";
+import {
+  registerProviderAuthResolver,
+  type ProviderAuthResolver,
+} from "./lib/provider-auth-resolvers.js";
 import { SessionBindingStore } from "./lib/session-bindings.js";
+
+export function createOpenAIProviderAuthResolver(): ProviderAuthResolver {
+  return async ({ providerID, sessionID }) => {
+    if (providerID !== "openai") return undefined;
+
+    const accountManager = new AccountManager({ quietMode: true });
+    await accountManager.loadFromDisk();
+
+    const sessionBindings = new SessionBindingStore();
+    sessionBindings.loadFromDisk();
+
+    const boundAccountIndex = sessionID ? sessionBindings.get(sessionID) : undefined;
+    const account =
+      boundAccountIndex === undefined
+        ? accountManager.getActiveAccount()
+        : accountManager.getAllAccounts().find((candidate) => candidate.index === boundAccountIndex) || null;
+
+    if (!account || !(await accountManager.ensureValidToken(account)) || !account.access) {
+      return undefined;
+    }
+
+    return {
+      access: account.access,
+      accountId: account.accountId,
+      expires: account.expires,
+    };
+  };
+}
 
 const tui: TuiPlugin = async (api) => {
   const accountManager = new AccountManager({ quietMode: true });
   const sessionBindings = new SessionBindingStore();
   sessionBindings.loadFromDisk();
+  const unregisterProviderAuthResolver = registerProviderAuthResolver(
+    "openai",
+    createOpenAIProviderAuthResolver(),
+  );
+  api.lifecycle.onDispose(unregisterProviderAuthResolver);
 
   api.keymap.registerLayer({
     priority: 1,
