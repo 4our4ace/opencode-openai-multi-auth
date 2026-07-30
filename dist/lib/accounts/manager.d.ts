@@ -3,16 +3,24 @@ export declare class AccountManager {
     private accounts;
     private activeIndex;
     private roundRobinCursor;
+    private manualAccountIndex;
     private strategyInitialized;
+    private accountsFileModifiedAt?;
     private config;
     constructor(config?: Partial<MultiAccountConfig>);
     loadFromDisk(): Promise<void>;
+    /**
+     * Adopt an account selection made by another plugin process (such as the
+     * TUI plugin) without replacing runtime-only token and rate-limit state.
+     */
+    syncActiveAccountFromDisk(): Promise<void>;
     saveToDisk(): Promise<void>;
     importFromOpenCodeAuth(): Promise<void>;
     addAccount(email: string | undefined, refreshToken: string, accessToken?: string, expires?: number): Promise<ManagedAccount>;
     getAllAccounts(): ManagedAccount[];
     getAccountCount(): number;
     setActiveAccount(index: number): Promise<ManagedAccount | null>;
+    getManuallySelectedAccount(): ManagedAccount | null;
     getNextAvailableAccount(model?: string): Promise<ManagedAccount | null>;
     getNextAvailableAccountForNewSession(model?: string): Promise<ManagedAccount | null>;
     private selectNextAvailableAccount;

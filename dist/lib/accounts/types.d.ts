@@ -23,6 +23,8 @@ export interface AccountsStorage {
     accounts: ManagedAccount[];
     activeAccountIndex: number;
     roundRobinCursor?: number;
+    /** Explicit user choice from /switch-account or the TUI account picker. */
+    manualAccountIndex?: number;
 }
 export interface MultiAccountConfig {
     accountSelectionStrategy: "sticky" | "round-robin" | "hybrid";

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import {
@@ -32,7 +32,9 @@ export class AccountManager {
   private accounts: ManagedAccount[] = [];
   private activeIndex = 0;
   private roundRobinCursor = 0;
+  private manualAccountIndex: number | undefined;
   private strategyInitialized = false;
+  private accountsFileModifiedAt?: number;
   private config: MultiAccountConfig;
 
   constructor(config: Partial<MultiAccountConfig> = {}) {
@@ -51,13 +53,52 @@ export class AccountManager {
         this.accounts = data.accounts;
         this.activeIndex = data.activeAccountIndex || 0;
         this.roundRobinCursor = data.roundRobinCursor ?? this.activeIndex;
+        this.manualAccountIndex = Number.isInteger(data.manualAccountIndex)
+          ? data.manualAccountIndex
+          : undefined;
         this.strategyInitialized = false;
+        this.accountsFileModifiedAt = statSync(ACCOUNTS_FILE).mtimeMs;
       }
     } catch {
       this.accounts = [];
       this.activeIndex = 0;
       this.roundRobinCursor = 0;
+      this.manualAccountIndex = undefined;
       this.strategyInitialized = false;
+    }
+  }
+
+  /**
+   * Adopt an account selection made by another plugin process (such as the
+   * TUI plugin) without replacing runtime-only token and rate-limit state.
+   */
+  async syncActiveAccountFromDisk(): Promise<void> {
+    if (!existsSync(ACCOUNTS_FILE)) return;
+    ensureSecureFile(ACCOUNTS_FILE);
+
+    try {
+      const modifiedAt = statSync(ACCOUNTS_FILE).mtimeMs;
+      if (modifiedAt === this.accountsFileModifiedAt) return;
+      const data = JSON.parse(
+        readFileSync(ACCOUNTS_FILE, "utf-8"),
+      ) as AccountsStorage;
+      this.accountsFileModifiedAt = modifiedAt;
+      if (data.version !== 1 || !Array.isArray(data.accounts)) return;
+
+      const selected = data.activeAccountIndex;
+      if (!Number.isInteger(selected) || !this.accounts.some((account) => account.index === selected)) {
+        return;
+      }
+
+      this.activeIndex = selected;
+      this.roundRobinCursor = selected;
+      this.manualAccountIndex = Number.isInteger(data.manualAccountIndex)
+        ? data.manualAccountIndex
+        : undefined;
+      // A persisted manual selection must not be shifted by PID offset.
+      this.strategyInitialized = true;
+    } catch {
+      // Keep the in-memory selection when the external state cannot be read.
     }
   }
 
@@ -70,8 +111,10 @@ export class AccountManager {
       accounts: this.accounts,
       activeAccountIndex: this.activeIndex,
       roundRobinCursor: this.roundRobinCursor,
+      manualAccountIndex: this.manualAccountIndex,
     };
     writeJsonSecure(ACCOUNTS_FILE, data);
+    this.accountsFileModifiedAt = statSync(ACCOUNTS_FILE).mtimeMs;
   }
 
   async importFromOpenCodeAuth(): Promise<void> {
@@ -199,9 +242,15 @@ export class AccountManager {
 
     this.activeIndex = index;
     this.roundRobinCursor = index;
+    this.manualAccountIndex = index;
     this.strategyInitialized = true;
     await this.saveToDisk();
     return account;
+  }
+
+  getManuallySelectedAccount(): ManagedAccount | null {
+    if (this.manualAccountIndex === undefined) return null;
+    return this.accounts.find((account) => account.index === this.manualAccountIndex) || null;
   }
 
   async getNextAvailableAccount(

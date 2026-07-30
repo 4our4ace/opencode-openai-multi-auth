@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const transformRequestForCodexMock = vi.fn();
 const showToastMock = vi.fn();
+const syncActiveAccountFromDiskMock = vi.fn();
 let fallbackAccountIndex = 0;
+let externallySelectedAccountIndex: number | undefined;
+let manuallySelectedAccountIndex: number | undefined;
 const sessionBindings = new Map<string, number>();
 const accounts = [
 	{
@@ -41,6 +44,12 @@ vi.mock('../lib/accounts/index.js', () => {
 	class AccountManager {
 		async loadFromDisk() {}
 		async importFromOpenCodeAuth() {}
+		async syncActiveAccountFromDisk() {
+			syncActiveAccountFromDiskMock();
+			if (externallySelectedAccountIndex !== undefined) {
+				fallbackAccountIndex = externallySelectedAccountIndex;
+			}
+		}
 		getAllAccounts() {
 			return accounts;
 		}
@@ -50,7 +59,11 @@ vi.mock('../lib/accounts/index.js', () => {
 		getActiveAccount() {
 			return accounts[0];
 		}
+		getManuallySelectedAccount() {
+			return manuallySelectedAccountIndex === undefined ? null : accounts[manuallySelectedAccountIndex];
+		}
 		async setActiveAccount(index: number) {
+			manuallySelectedAccountIndex = index;
 			return accounts[index] ?? null;
 		}
 		async getNextAvailableAccount() {
@@ -94,7 +107,10 @@ describe('Runtime fetch parity', () => {
 	beforeEach(() => {
 		transformRequestForCodexMock.mockReset();
 		showToastMock.mockReset();
+		syncActiveAccountFromDiskMock.mockReset();
 		fallbackAccountIndex = 0;
+		externallySelectedAccountIndex = undefined;
+		manuallySelectedAccountIndex = undefined;
 		sessionBindings.clear();
 		(globalThis as any).fetch = vi.fn(async () => {
 			return new Response('data: {"type":"response.done"}\n\n', {
@@ -156,6 +172,42 @@ describe('Runtime fetch parity', () => {
 		);
 
 		expect(result).toBe('Switched to second@example.com.');
+	});
+
+	it('uses a manually selected account even when the request has an old session binding', async () => {
+		const plugin = await loadPlugin();
+		const result = await plugin.tool['switch-account'].execute(
+			{ accountIndex: 0 },
+			{ sessionID: 'tui-session-id' },
+		);
+		expect(result).toBe('Switched to first@example.com.');
+
+		const loader = await plugin.auth.loader(
+			async () => ({ type: 'oauth', access: 'access-token', refresh: 'refresh-token', expires: Date.now() + 60_000 }) as any,
+			{} as any,
+		);
+		sessionBindings.set('different-prompt-cache-key', 1);
+		await loader.fetch('https://api.openai.com/v1/responses', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.3-codex', prompt_cache_key: 'different-prompt-cache-key', input: [] }),
+		});
+
+		expect((globalThis as any).fetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer first-access-token');
+		expect((globalThis as any).fetch.mock.calls[0][1].headers.get('ChatGPT-Account-Id')).toBe('acct_first');
+	});
+
+	it('synchronizes a TUI account selection before selecting an unbound request', async () => {
+		const fetch = await loadFetch();
+		externallySelectedAccountIndex = 1;
+
+		await fetch('https://api.openai.com/v1/responses', {
+			method: 'POST',
+			body: JSON.stringify({ model: 'gpt-5.3-codex', input: [] }),
+		});
+
+		expect(syncActiveAccountFromDiskMock).toHaveBeenCalledTimes(1);
+		expect((globalThis as any).fetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer second-access-token');
+		expect((globalThis as any).fetch.mock.calls[0][1].headers.get('ChatGPT-Account-Id')).toBe('acct_second');
 	});
 
 	it('preserves the native request body and headers while replacing account auth', async () => {

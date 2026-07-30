@@ -149,10 +149,27 @@ describe("AccountManager strategy selection", () => {
 
     expect((await manager.setActiveAccount(1))?.email).toBe("b@example.com");
     expect(manager.getActiveAccount()?.index).toBe(1);
+    expect(manager.getManuallySelectedAccount()?.index).toBe(1);
 
     const reloaded = await createManager(home, "sticky");
     await reloaded.loadFromDisk();
     expect(reloaded.getActiveAccount()?.index).toBe(1);
+    expect(reloaded.getManuallySelectedAccount()?.index).toBe(1);
+  });
+
+  it("adopts a manual selection saved by another manager", async () => {
+    const home = mkdtempSync(join(tmpdir(), "strategy-external-switch-"));
+    const runtimeManager = await createManager(home, "sticky");
+    await runtimeManager.loadFromDisk();
+    await runtimeManager.addAccount("a@example.com", "rt-1");
+    await runtimeManager.addAccount("b@example.com", "rt-2");
+
+    const tuiManager = await createManager(home, "sticky");
+    await tuiManager.loadFromDisk();
+    await tuiManager.setActiveAccount(1);
+
+    await runtimeManager.syncActiveAccountFromDisk();
+    expect((await runtimeManager.getNextAvailableAccount())?.index).toBe(1);
   });
 
   it("does not change the active account for an unknown manual selection", async () => {

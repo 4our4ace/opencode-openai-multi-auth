@@ -179,6 +179,13 @@ export const OpenAIAuthPlugin = async ({ client }) => {
         return accountManager.getAllAccounts().find((acc) => acc.index === index) || null;
     };
     const getSessionBoundAccount = async (sessionKey, model) => {
+        // A user explicitly selecting an account must take precedence over any
+        // stale prompt-cache binding. TUI session IDs and prompt cache keys are
+        // not guaranteed to be the same value, so binding only the TUI session
+        // cannot reliably switch the account used by this fetch path.
+        const manuallySelectedAccount = accountManager.getManuallySelectedAccount();
+        if (manuallySelectedAccount)
+            return manuallySelectedAccount;
         if (!sessionKey) {
             return accountManager.getNextAvailableAccount(model);
         }
@@ -455,6 +462,10 @@ export const OpenAIAuthPlugin = async ({ client }) => {
                     const requestBody = await requestBodyText(input, init);
                     const model = extractModelFromBody(requestBody);
                     const sessionKey = extractPromptCacheKeyFromBody(requestBody);
+                    // The TUI runs in a separate plugin instance and persists manual
+                    // selections. A manual selection overrides even existing session
+                    // bindings, so synchronize it before every account choice.
+                    await accountManager.syncActiveAccountFromDisk();
                     const account = await getSessionBoundAccount(sessionKey, model);
                     if (!account) {
                         return new Response(JSON.stringify({ error: "No available OpenAI accounts" }), { status: 503, headers: { "Content-Type": "application/json" } });

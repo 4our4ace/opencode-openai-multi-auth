@@ -240,6 +240,13 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
     sessionKey: string | undefined,
     model?: string,
   ): Promise<ManagedAccount | null> => {
+    // A user explicitly selecting an account must take precedence over any
+    // stale prompt-cache binding. TUI session IDs and prompt cache keys are
+    // not guaranteed to be the same value, so binding only the TUI session
+    // cannot reliably switch the account used by this fetch path.
+    const manuallySelectedAccount = accountManager.getManuallySelectedAccount();
+    if (manuallySelectedAccount) return manuallySelectedAccount;
+
     if (!sessionKey) {
       return accountManager.getNextAvailableAccount(model);
     }
@@ -624,6 +631,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
           const requestBody = await requestBodyText(input, init);
           const model = extractModelFromBody(requestBody);
           const sessionKey = extractPromptCacheKeyFromBody(requestBody);
+
+          // The TUI runs in a separate plugin instance and persists manual
+          // selections. A manual selection overrides even existing session
+          // bindings, so synchronize it before every account choice.
+          await accountManager.syncActiveAccountFromDisk();
           const account = await getSessionBoundAccount(sessionKey, model);
 
           if (!account) {
